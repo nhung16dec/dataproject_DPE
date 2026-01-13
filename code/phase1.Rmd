@@ -1,1 +1,112 @@
+---
+title: "Data_project"
+author: "Nhung"
+date: "2026-01-13"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(RPostgres)
+
+con <- tryCatch({
+  dbConnect(RPostgres::Postgres(),
+            host = "dockerdib1.pedagogie.sandbox.univ-tours.fr",
+            port = 32867,
+            dbname = "groupe4",
+            user = "groupe4",
+            password = "groupe4")
+}, error = function(e) {
+  message("Erreur de connexion: ", e$message)
+  return(NULL)
+})
+```
+# Vérifier la connexion
+
+```{r}
+if (!is.null(con)) {
+  print("Connexion réussie avec RPostgres!")
+  
+  # Tester avec une requête simple
+  version <- dbGetQuery(con2, "SELECT version();")
+  print(version)
+  
+  # Lister les tables disponibles
+  tables <- dbListTables(con2)
+  print("Tables disponibles:")
+  print(tables)
+  
+} else {
+  print("La connexion a échoué.")
+}
+
+```
+
+# Lire une table entière
+
+```{r}
+dim_commune <- dbReadTable(con, "dim_commune")
+dim_decennie_construction <- dbReadTable(con, "dim_decennie_construction")
+dim_type_batiment <- dbReadTable(con, "dim_type_batiment")
+fait_dpe <- dbReadTable(con, "fait_dpe")
+fait_ensoleillement <- dbReadTable(con, "fait_ensoleillement")
+fait_temperature <- dbReadTable(con, "fait_temperature")
+h_departement <- dbReadTable(con, "h_departement")
+h_region <- dbReadTable(con, "h_region")
+```
+# Variables
+```{r}
+variables_numeriques <- c(
+  "annee_construction",
+  "apport_solaire_saison_chauffe",
+  "apport_solaire_saison_froide",
+  "consommation_kwh",
+  "deperditions_baies_vitrees",
+  "deperditions_enveloppe",
+  "deperditions_murs",
+  "deperditions_planchers_bas",
+  "deperditions_planchers_hauts",
+  "deperditions_ponts_thermiques",
+  "deperditions_portes",
+  "deperditions_renouvellement_air",
+  "moyenne_consommations_kwh",
+  "moyenne_inertie_lourde",
+  "moyenne_qualite_isolation_enveloppe",
+  "moyenne_qualite_isolation_murs",
+  "moyenne_qualite_isolation_plancher_haut_comble_amenage",
+  "moyenne_surface_habitable_immeuble",
+  "moyenne_surface_habitable_logement",
+  "surface_habitable_immeuble",
+  "surface_habitable_logement"
+)
+```
+```{r}
+data = fait_dpe[fait_dpe$id_type_batiment == 1,]
+```
+
+```{r}
+
+for (var in variables_numeriques) {
+  if (var %in% names(data)) {
+    hist(data[[var]], 
+         main = var,
+         xlab = var,
+         breaks = 10,
+         ylab = "Fréquence",
+         col = "steelblue",
+         border = "white")
+  }
+}
+
+```
+
+```{r}
+
+library(DataExplorer)
+create_report(fait_dpe)
+```
 
