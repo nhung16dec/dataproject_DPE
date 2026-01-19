@@ -1,10 +1,11 @@
 # Etude de modification de l’immeuble pour réduire la consommation électrique
 
 ## Description du projet
-
-Ce projet vise à intégrer et analyser les données issues de l’ADEME (Agence de la transition écologique) dans un data warehouse Oracle à l’aide d’un pipeline ETL construit sur KNIME.
+### Semestre 1
+Ce projet vise à intégrer et analyser les données issues de l’ADEME (Agence de la transition écologique) dans un data warehouse Postgre SQL à l’aide d’un pipeline ETL construit sur KNIME.
 L’objectif principal est de centraliser, nettoyer et transformer les données afin de réaliser des analyses statistiques permettant d’identifier les facteurs influençant les évolutions environnementales et énergétiques.
-
+### Semestre 2
+Résoudre des besoins en Data Mining
 ##  Objectifs principaux
 
 ### Extract
