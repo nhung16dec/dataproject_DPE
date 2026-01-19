@@ -11,12 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r}
+#install.packages("RPostgres")
 library(RPostgres)
 
 con <- tryCatch({
   dbConnect(RPostgres::Postgres(),
             host = "dockerdib1.pedagogie.sandbox.univ-tours.fr",
-            port = 32867,
+            port = 32782,
             dbname = "groupe4",
             user = "groupe4",
             password = "groupe4")
@@ -31,12 +32,8 @@ con <- tryCatch({
 if (!is.null(con)) {
   print("Connexion réussie avec RPostgres!")
   
-  # Tester avec une requête simple
-  version <- dbGetQuery(con2, "SELECT version();")
-  print(version)
-  
   # Lister les tables disponibles
-  tables <- dbListTables(con2)
+  tables <- dbListTables(con)
   print("Tables disponibles:")
   print(tables)
   
@@ -57,11 +54,49 @@ fait_ensoleillement <- dbReadTable(con, "fait_ensoleillement")
 fait_temperature <- dbReadTable(con, "fait_temperature")
 h_departement <- dbReadTable(con, "h_departement")
 h_region <- dbReadTable(con, "h_region")
+communes_moyennes <- dbReadTable(con, "communes_moyennes")
 ```
-# Variables
+# Définir les variables pour chaque besoin
 ```{r}
-variables_numeriques <- c(
+# =========================
+# Besoin 1 : Prédiction consommation
+# =========================
+vars_besoin_1 <- c(
   "annee_construction",
+  "apport_solaire_saison_chauffe",
+  "apport_solaire_saison_froide",
+  "consommation_kwh",
+  "deperditions_enveloppe",
+  "inertie_lourde",
+  "qualite_isolation_enveloppe",
+  "surface_habitable_immeuble",
+  "surface_habitable_logement",
+  "id_type_batiment"
+)
+
+# =========================
+# Besoin 2 : Clustering des communes
+# =========================
+vars_besoin_2 <- c(
+  "moyenne_apport_solaire_saison_chauffe",
+  "moyenne_apport_solaire_saison_froide",
+  "moyenne_deperditions_enveloppe",
+  "moyenne_consommations_kwh",
+  "moyenne_inertie_lourde",
+  "moyenne_qualite_isolation_enveloppe",
+  "moyenne_qualite_isolation_murs",
+  "moyenne_qualite_isolation_plancher_haut_comble_amenage",
+  "moyenne_surface_habitable_immeuble",
+  "moyenne_surface_habitable_logement",
+  "taux_app_commune",
+  "taux_maison_commune",
+  "taux_batiment_commune"
+)
+
+# =========================
+# Besoin 3 : Recommandation de travaux
+# =========================
+vars_besoin_3 <- c(
   "apport_solaire_saison_chauffe",
   "apport_solaire_saison_froide",
   "consommation_kwh",
@@ -73,40 +108,344 @@ variables_numeriques <- c(
   "deperditions_ponts_thermiques",
   "deperditions_portes",
   "deperditions_renouvellement_air",
-  "moyenne_consommations_kwh",
-  "moyenne_inertie_lourde",
-  "moyenne_qualite_isolation_enveloppe",
-  "moyenne_qualite_isolation_murs",
-  "moyenne_qualite_isolation_plancher_haut_comble_amenage",
-  "moyenne_surface_habitable_immeuble",
-  "moyenne_surface_habitable_logement",
+  "inertie_lourde",
+  "isolation_toiture",
+  "protection_solaire_exterieure",
+  "qualite_isolation_enveloppe",
+  "qualite_isolation_murs",
+  "qualite_isolation_plancher_haut_comble_amenage",  
   "surface_habitable_immeuble",
-  "surface_habitable_logement"
+  "surface_habitable_logement",
+  "id_type_batiment"
+)
+
+# =========================
+# Besoin 4 : Estimation année de construction
+# =========================
+vars_besoin_4 <- c(
+  "annee_construction",
+  "apport_solaire_saison_chauffe",
+  "apport_solaire_saison_froide",
+  "deperditions_baies_vitrees",
+  "deperditions_enveloppe",
+  "deperditions_murs",
+  "deperditions_planchers_bas",
+  "deperditions_planchers_hauts",
+  "deperditions_ponts_thermiques",
+  "deperditions_portes",
+  "deperditions_renouvellement_air",
+  "qualite_isolation_enveloppe",
+  "qualite_isolation_murs",
+  "qualite_isolation_plancher_haut_comble_amenage",
+  "id_type_batiment"
 )
 ```
+#Extraction chaque besoin
+
 ```{r}
-data = fait_dpe[fait_dpe$id_type_batiment == 1,]
+dpe_besoin_1 <- fait_dpe[, vars_besoin_1]
+dpe_besoin_2 <- communes_moyennes[, vars_besoin_2]
+dpe_besoin_3 <- fait_dpe[, vars_besoin_3]
+dpe_besoin_4 <- fait_dpe[, vars_besoin_4]
+
 ```
 
 ```{r}
+library(ggplot2)
+library(reshape2)
+```
+```{r}
+besoins <- list(
+  "Besoin 1: Prédiction de la consommation" = dpe_besoin_1,
+  "Besoin 2: Clustering communes" = dpe_besoin_2,
+  "Besoin 3: Recommandation travaux" = dpe_besoin_3,
+  "Besoin 4: Estimation année construction" = dpe_besoin_4
+)
+```
 
-for (var in variables_numeriques) {
-  if (var %in% names(data)) {
-    hist(data[[var]], 
-         main = var,
-         xlab = var,
-         breaks = 10,
-         ylab = "Fréquence",
-         col = "steelblue",
-         border = "white")
+
+```{r}
+# Boucle pour chaque besoin
+for (besoin_label in names(besoins)) {
+  besoin_data <- besoins[[besoin_label]]
+  
+  # Récupérer les colonnes du besoin
+  vars_besoin <- colnames(besoin_data)
+  
+  # Identifier les variables numériques uniquement (pas de conversion)
+  vars_numeriques <- sapply(besoin_data, is.numeric)
+  data_num <- besoin_data[, vars_numeriques, drop = FALSE]
+  
+  # Supprimer les colonnes avec uniquement des NA
+  colonnes_non_vides <- sapply(data_num, function(x) !all(is.na(x)))
+  data_num <- data_num[, colonnes_non_vides, drop = FALSE]
+  
+  # Calculer la matrice de corrélation
+  cor_matrix <- cor(data_num, use = "pairwise.complete.obs")
+  
+  # Supprimer les lignes/colonnes avec uniquement des NA dans la matrice de corrélation
+  lignes_valides <- !apply(is.na(cor_matrix), 1, all)
+  cor_matrix <- cor_matrix[lignes_valides, lignes_valides, drop = FALSE]
+  
+  # Garder uniquement le triangle inférieur SANS la diagonale
+  cor_matrix[upper.tri(cor_matrix, diag = TRUE)] <- NA
+  
+  cor_long <- melt(cor_matrix, varnames = c("Var1", "Var2"), value.name = "Correlation")
+  
+  # Supprimer les valeurs NA (triangle supérieur + diagonale)
+  cor_long <- cor_long[!is.na(cor_long$Correlation), ]
+  
+  # Créer le graphique
+  p <- ggplot(cor_long, aes(x = Var1, y = Var2, fill = Correlation)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = round(Correlation, 2)), size = 2.5) +
+    scale_fill_gradient2(
+      low = "blue", 
+      high = "red", 
+      mid = "white", 
+      midpoint = 0, 
+      limit = c(-1, 1), 
+      space = "Lab", 
+      name = "Corrélation"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8),
+      axis.text.y = element_text(size = 8),
+      plot.title = element_text(size = 12, hjust = 0.5, face = "bold")
+    ) +
+    labs(
+      title = paste("Matrice de corrélation -", besoin_label),
+      x = "", 
+      y = ""
+    )
+  
+  print(p)
+}
+```
+
+# spearman
+
+```{r}
+
+# =========================
+# Boucle pour créer les matrices de corrélation SPEARMAN
+# =========================
+for (besoin_label in names(besoins)) {
+  besoin_data <- besoins[[besoin_label]]
+  
+  # Récupérer les colonnes du besoin
+  vars_besoin <- colnames(besoin_data)
+  
+  if (length(vars_besoin) < 2) {
+    message(paste("Pas assez de variables pour", besoin_label))
+    next
   }
+  
+  # Identifier les variables numériques uniquement (pas de conversion)
+  vars_numeriques <- sapply(besoin_data, is.numeric)
+  data_num <- besoin_data[, vars_numeriques, drop = FALSE]
+  
+  # Vérifier qu'il y a au moins 2 variables numériques
+  if (ncol(data_num) < 2) {
+    message(paste("Pas assez de variables numériques pour", besoin_label))
+    next
+  }
+  
+  # Supprimer les colonnes avec uniquement des NA
+  colonnes_non_vides <- sapply(data_num, function(x) !all(is.na(x)))
+  data_num <- data_num[, colonnes_non_vides, drop = FALSE]
+  
+  # Vérifier qu'il reste au moins 2 colonnes
+  if (ncol(data_num) < 2) {
+    message(paste("Pas assez de colonnes non-vides pour", besoin_label))
+    next
+  }
+  
+  # Calculer la matrice de corrélation SPEARMAN
+  cor_matrix <- cor(data_num, use = "pairwise.complete.obs", method = "spearman")
+  
+  # Supprimer les lignes/colonnes avec uniquement des NA dans la matrice de corrélation
+  lignes_valides <- !apply(is.na(cor_matrix), 1, all)
+  cor_matrix <- cor_matrix[lignes_valides, lignes_valides, drop = FALSE]
+  
+  if (nrow(cor_matrix) < 2) {
+    message(paste("Matrice de corrélation trop petite pour", besoin_label))
+    next
+  }
+  
+  # Garder uniquement le triangle inférieur SANS la diagonale
+  cor_matrix[upper.tri(cor_matrix, diag = TRUE)] <- NA
+  
+  cor_long <- melt(cor_matrix, varnames = c("Var1", "Var2"), value.name = "Correlation")
+  
+  # Supprimer les valeurs NA (triangle supérieur + diagonale)
+  cor_long <- cor_long[!is.na(cor_long$Correlation), ]
+  
+  # Créer le graphique
+  p <- ggplot(cor_long, aes(x = Var1, y = Var2, fill = Correlation)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = round(Correlation, 2)), size = 2.5) +
+    scale_fill_gradient2(
+      low = "blue", 
+      high = "red", 
+      mid = "white", 
+      midpoint = 0, 
+      limit = c(-1, 1), 
+      space = "Lab", 
+      name = "Corrélation\n(Spearman)"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8),
+      axis.text.y = element_text(size = 8),
+      plot.title = element_text(size = 12, hjust = 0.5, face = "bold")
+    ) +
+    labs(
+      title = paste("Matrice de corrélation (Spearman) -", besoin_label),
+      x = "", 
+      y = ""
+    )
+  
+  print(p)
+}
+```
+
+```{r}
+# =========================
+# Fonction pour calculer matrice de corrélation avec p-values
+# =========================
+cor_matrix_with_pvalue <- function(data) {
+  n_vars <- ncol(data)
+  var_names <- colnames(data)
+  
+  # Initialiser les matrices
+  cor_matrix <- matrix(NA, nrow = n_vars, ncol = n_vars)
+  pval_matrix <- matrix(NA, nrow = n_vars, ncol = n_vars)
+  
+  rownames(cor_matrix) <- colnames(cor_matrix) <- var_names
+  rownames(pval_matrix) <- colnames(pval_matrix) <- var_names
+  
+  # Calculer corrélation et p-value pour chaque paire
+  for (i in 1:n_vars) {
+    for (j in 1:n_vars) {
+      if (i == j) {
+        cor_matrix[i, j] <- 1
+        pval_matrix[i, j] <- 0
+      } else {
+        # Données sans NA pour cette paire
+        valid_data <- complete.cases(data[, c(i, j)])
+        x <- data[valid_data, i]
+        y <- data[valid_data, j]
+        
+        if (length(x) > 2) {
+          test_result <- cor.test(x, y, method = "spearman", exact = FALSE)
+          cor_matrix[i, j] <- test_result$estimate
+          pval_matrix[i, j] <- test_result$p.value
+        }
+      }
+    }
+  }
+  
+  return(list(cor = cor_matrix, pval = pval_matrix))
 }
 
+# =========================
+# Boucle pour créer les matrices avec p-values
+# =========================
+for (besoin_label in names(besoins)) {
+  besoin_data <- besoins[[besoin_label]]
+  
+  # Récupérer les colonnes du besoin
+  vars_besoin <- colnames(besoin_data)
+  
+  if (length(vars_besoin) < 2) {
+    message(paste("Pas assez de variables pour", besoin_label))
+    next
+  }
+  
+  # Identifier les variables numériques uniquement
+  vars_numeriques <- sapply(besoin_data, is.numeric)
+  data_num <- besoin_data[, vars_numeriques, drop = FALSE]
+  
+  # Vérifier qu'il y a au moins 2 variables numériques
+  if (ncol(data_num) < 2) {
+    message(paste("Pas assez de variables numériques pour", besoin_label))
+    next
+  }
+  
+  # Supprimer les colonnes avec uniquement des NA
+  colonnes_non_vides <- sapply(data_num, function(x) !all(is.na(x)))
+  data_num <- data_num[, colonnes_non_vides, drop = FALSE]
+  
+  # Vérifier qu'il reste au moins 2 colonnes
+  if (ncol(data_num) < 2) {
+    message(paste("Pas assez de colonnes non-vides pour", besoin_label))
+    next
+  }
+  
+  # Calculer corrélation et p-values
+  result <- cor_matrix_with_pvalue(data_num)
+  cor_matrix <- result$cor
+  pval_matrix <- result$pval
+  
+  # Garder uniquement le triangle inférieur SANS la diagonale
+  cor_matrix[upper.tri(cor_matrix, diag = TRUE)] <- NA
+  pval_matrix[upper.tri(pval_matrix, diag = TRUE)] <- NA
+  
+  # Convertir en format long
+  cor_long <- melt(cor_matrix, varnames = c("Var1", "Var2"), value.name = "Correlation")
+  pval_long <- melt(pval_matrix, varnames = c("Var1", "Var2"), value.name = "Pvalue")
+  
+  # Fusionner corrélation et p-value
+  cor_pval <- merge(cor_long, pval_long, by = c("Var1", "Var2"))
+  
+  # Supprimer les valeurs NA
+  cor_pval <- cor_pval[!is.na(cor_pval$Correlation), ]
+  
+  # Créer le label avec corrélation et p-value
+  cor_pval$label <- ifelse(
+    cor_pval$Pvalue < 0.001, 
+    paste0(round(cor_pval$Correlation, 2), "\n***"),
+    ifelse(cor_pval$Pvalue < 0.01, 
+           paste0(round(cor_pval$Correlation, 2), "\n**"),
+           ifelse(cor_pval$Pvalue < 0.05, 
+                  paste0(round(cor_pval$Correlation, 2), "\n*"),
+                  paste0(round(cor_pval$Correlation, 2), "\nns")
+           )
+    )
+  )
+  
+  # Créer le graphique
+  p <- ggplot(cor_pval, aes(x = Var1, y = Var2, fill = Correlation)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = label), size = 2.5) +
+    scale_fill_gradient2(
+      low = "blue", 
+      high = "red", 
+      mid = "white", 
+      midpoint = 0, 
+      limit = c(-1, 1), 
+      space = "Lab", 
+      name = "Corrélation\n(Spearman)"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8),
+      axis.text.y = element_text(size = 8),
+      plot.title = element_text(size = 12, hjust = 0.5, face = "bold"),
+      plot.subtitle = element_text(size = 10, hjust = 0.5)
+    ) +
+    labs(
+      title = paste("Matrice de corrélation (Spearman) -", besoin_label),
+      subtitle = "*** p < 0.001 | ** p < 0.01 | * p < 0.05 | ns = non significatif",
+      x = "", 
+      y = ""
+    )
+  
+  print(p)
+}
 ```
 
-```{r}
 
-library(DataExplorer)
-create_report(fait_dpe)
-```
 
