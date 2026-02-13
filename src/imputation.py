@@ -99,15 +99,14 @@ print(df_app.dtypes)
 print(df_maison.dtypes)
 
 # Count the columns missing value rate for each dataframe
-def missing_value_table (df):
+def missing_value_table (df, name):
     miss_val_counts = df.isna().sum()
     miss_val_rate = round((miss_val_counts/len(df))*100,2)
+    print("Percentage of missing values per column of ", name)
     return(miss_val_rate)
 
-print("\nPercentage of missing values per column:")
-print("\nAppartment: --------------------------------------\n")
-print(missing_value_table(df_app))
-print(missing_value_table(df_maison))
+print(missing_value_table(df_app, 'des appartements'))
+print(missing_value_table(df_maison, 'des maisons'))
 
 """
 # Spearman correlation heatmaps
@@ -143,6 +142,7 @@ plt.show()
 
 # Imputation missing value=================================
 
+# Imputation by re-encode
 # Re-encode isolation_toiture in df_maison:
 #  - original value 0 -> -1
 #  - missing values  -> 0
@@ -155,9 +155,10 @@ df_maison.loc[is_na, "isolation_toiture"] = 0
 # check missing value rate of "isolation_toiture"
 print(missing_value_table(df_maison))
 
+# Imputation by linear regression
 def run_linear_regression(df, name: str, x_cols) -> None:
     """Fit linear regression: Y=qualite_isolation_murs, X columns given in x_cols."""
-    required_cols = ["qualite_isolation_murs"] + list(x_cols)
+    required_cols = ["qualite_isolation_murs_norm"] + list(x_cols)
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
         print(f"\n[{name}] Cannot run regression, missing columns: {missing}")
@@ -169,7 +170,7 @@ def run_linear_regression(df, name: str, x_cols) -> None:
         return
 
     X = data[x_cols].values
-    y = data["qualite_isolation_murs"].values
+    y = data["qualite_isolation_murs_norm"].values
 
     model = LinearRegression()
     model.fit(X, y)
@@ -189,12 +190,12 @@ def run_linear_regression(df, name: str, x_cols) -> None:
 run_linear_regression(
     df_app,
     "df_app",
-    ["qualite_isolation_enveloppe", "consommation_kwh"],
+    ["qualite_isolation_enveloppe_norm", "consommation_kwh_norm"],
 )
 run_linear_regression(
     df_maison,
     "df_maison",
-    ["qualite_isolation_enveloppe", "annee_construction", "consommation_kwh"],
+    ["qualite_isolation_enveloppe_norm", "annee_construction_norm", "consommation_kwh_norm"],
 )
 
 """
