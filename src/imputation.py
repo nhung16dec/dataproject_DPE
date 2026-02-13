@@ -48,18 +48,18 @@ selected_columns = ['numero_dpe',
 # 'qualite_isolation_plancher_haut_comble_amenage',
 # 'qualite_isolation_plancher_haut_comble_perdu',
 # 'qualite_isolation_plancher_haut_toit_terrasse',
-'qualite_isolation_menuiseries', 
-'deperditions_ponts_thermiques',
+# 'qualite_isolation_menuiseries', 
+# 'deperditions_ponts_thermiques',
 # 'deperditions_planchers_hauts', 
 # 'deperditions_planchers_bas',
 # 'deperditions_portes', 
 # 'deperditions_baies_vitrees',
-'deperditions_renouvellement_air', 
-'qualite_isolation_plancher_bas',
+# 'deperditions_renouvellement_air', 
+# 'qualite_isolation_plancher_bas',
 'etiquette_dpe_norm', 
 'etiquette_ges_norm', 
 'annee_construction_norm',
-'apport_solaire_saison_froide_norm', 
+# 'apport_solaire_saison_froide_norm', 
 'consommation_kwh_norm',
 'deperditions_baies_vitrees_norm', 
 'deperditions_enveloppe_norm',
@@ -154,7 +154,7 @@ df_maison.loc[is_zero, "isolation_toiture"] = -1
 df_maison.loc[is_na, "isolation_toiture"] = 0
 # check missing value rate of "isolation_toiture"
 print(missing_value_table(df_maison))
-"""
+
 def run_linear_regression(df, name: str, x_cols) -> None:
     """Fit linear regression: Y=qualite_isolation_murs, X columns given in x_cols."""
     required_cols = ["qualite_isolation_murs"] + list(x_cols)
@@ -181,7 +181,7 @@ def run_linear_regression(df, name: str, x_cols) -> None:
     for col_name, coef in zip(x_cols, model.coef_):
         print(f"  coef {col_name}: {coef:.4f}")
     print(f"  R^2 (on training data): {r2:.4f}")
-"""
+
 
 # Run regressions:
 # - df_app: X = [qualite_isolation_enveloppe, consommation_kwh]
@@ -197,7 +197,7 @@ run_linear_regression(
     ["qualite_isolation_enveloppe", "annee_construction", "consommation_kwh"],
 )
 
-
+"""
 # ---- MICE imputation for deperditions* variables ----
 deperditions_cols = [
     "deperditions_baies_vitrees",
