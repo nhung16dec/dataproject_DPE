@@ -1,20 +1,8 @@
-"""In case of using Pyzo instead of Cursor
-import os
-os.chdir("E:\master\s2\project\src")
-"""
-# Import libraries
+#─────────────────────── Import libraries ───────────────────────
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
-from sklearn.experimental import enable_iterative_imputer  # noqa: F401
-from sklearn.impute import IterativeImputer
-
-# Import data
-df_dpe = pd.read_csv("./data/fait_dpe_traite.csv", sep = ";")
-df_com = pd.read_csv("./data/communes_moyennes_traite.csv", sep = ";", decimal = ",")
-
-# Clean up data by drop unuseful columns
+import src.helpers as fdpe
+# ─────────────────────── Constants ───────────────────────
+data_dir = "./data/"
 selected_columns = ['numero_dpe', 
 # 'etiquette_dpe', 
 # 'etiquette_ges',
@@ -40,7 +28,7 @@ selected_columns = ['numero_dpe',
 # 'consommation_euro',
 # 'type_ins_solaire_ecs', 
 # 'presence_production_pv', 
-# 'code_commune',
+'code_commune',
 # 'annee_construction', 
 # 'annee_etablissement_dpe',
 # 'decennie_construction', 
@@ -54,11 +42,11 @@ selected_columns = ['numero_dpe',
 # 'deperditions_planchers_bas',
 # 'deperditions_portes', 
 # 'deperditions_baies_vitrees',
-# 'deperditions_renouvellement_air', 
+
 # 'qualite_isolation_plancher_bas',
 'etiquette_dpe_norm', 
 'etiquette_ges_norm', 
-'annee_construction_norm',
+# 'annee_construction_norm',
 # 'apport_solaire_saison_froide_norm', 
 'consommation_kwh_norm',
 'deperditions_baies_vitrees_norm', 
@@ -74,197 +62,138 @@ selected_columns = ['numero_dpe',
 'qualite_isolation_enveloppe_norm',
 'qualite_isolation_murs_norm']
 
-df_dpe = df_dpe[selected_columns]
-print(df_dpe.shape) #Verify column number 1048575
-
-# Drop all rows wher building type 2 or type_immeuble == 1
-df_dpe = df_dpe[df_dpe['type_immeuble'] == 0] 
-print(df_dpe.shape) #Verify column number 1025455
-
-# Create seperate DataFrame by building type
-df_app = df_dpe[df_dpe['type_appartement'] == 1].copy()
-df_maison = df_dpe[df_dpe['type_maison'] == 1].copy()
-
-print(df_app.shape) #Verify column number 572 512 x 27
-print(df_maison.shape) #Verify column number 452 943 x 27
-
-# Drop 'isolation_toiture' in df_app because appartements have no toir
-df_app = df_app.drop(columns = ["isolation_toiture", "type_appartement", "type_maison" , "type_immeuble", "numero_dpe"]) # After this line, df_app has 23 columns
-# Drop building type in df_maison
-df_maison = df_maison.drop(columns = ["type_appartement", "type_maison", "type_immeuble", "numero_dpe" ]) # After this line, df_maison has 24 columns
-# Transform data type from float64 to number
-df_app = df_app.apply(pd.to_numeric, errors = "coerce")
-df_maison = df_maison.apply(pd.to_numeric, errors = "coerce")
-print(df_app.dtypes)
-print(df_maison.dtypes)
-
-# Count the columns missing value rate for each dataframe
-def missing_value_table (df, name):
-    miss_val_counts = df.isna().sum()
-    miss_val_rate = round((miss_val_counts/len(df))*100,2)
-    print("Percentage of missing values per column of ", name)
-    return(miss_val_rate)
-
-print(missing_value_table(df_app, 'des appartements'))
-print(missing_value_table(df_maison, 'des maisons'))
-
-"""
-# Spearman correlation heatmaps
-numeric_app = df_app.select_dtypes(include="number")
-numeric_maison = df_maison.select_dtypes(include="number")
-
-print("\nComputing Spearman correlation for df_app (numeric columns only)...")
-corr_app = numeric_app.corr(method="spearman")
-
-plt.figure(figsize=(14, 12))  # Larger figure
-sns.heatmap(corr_app, 
-            annot=True,      # Show correlation values
-            fmt='.2f',       # 2 decimal places
-            cmap="coolwarm", 
-            center=0,
-            square=True,     # Square cells
-            linewidths=0.5,  # Grid lines
-            cbar_kws={'shrink': 0.8})
-plt.title("Spearman correlation heatmap - df_app", fontsize=16)
-plt.xticks(rotation=45, ha='right', fontsize=8)
-plt.yticks(rotation=0, fontsize=8)
-plt.tight_layout()
-plt.show()
-
-print("\nComputing Spearman correlation for df_maison (numeric columns only)...")
-corr_maison = numeric_maison.corr(method="spearman")
-plt.figure(figsize=(10, 8))
-sns.heatmap(corr_maison, annot=False, cmap="coolwarm", center=0)
-plt.title("Spearman correlation heatmap - df_maison")
-plt.tight_layout()
-plt.show()
-"""
-
-# Imputation missing value=================================
-
-# Imputation by re-encode
-# Re-encode isolation_toiture in df_maison:
-#  - original value 0 -> -1
-#  - missing values  -> 0
-#  - 1    -> kept as-is
-iso = df_maison["isolation_toiture"]
-is_na = iso.isna()
-is_zero = iso == 0
-df_maison.loc[is_zero, "isolation_toiture"] = -1
-df_maison.loc[is_na, "isolation_toiture"] = 0
-# check missing value rate of "isolation_toiture"
-print(missing_value_table(df_maison))
-
-# Imputation by linear regression
-def run_linear_regression(df, name: str, x_cols) -> None:
-    """Fit linear regression: Y=qualite_isolation_murs, X columns given in x_cols."""
-    required_cols = ["qualite_isolation_murs_norm"] + list(x_cols)
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        print(f"\n[{name}] Cannot run regression, missing columns: {missing}")
-        return
-
-    data = df[required_cols].dropna()
-    if len(data) == 0:
-        print(f"\n[{name}] No rows left after dropping NaNs for regression.")
-        return
-
-    X = data[x_cols].values
-    y = data["qualite_isolation_murs_norm"].values
-
-    model = LinearRegression()
-    model.fit(X, y)
-    r2 = model.score(X, y)
-
-    print(f"\n[{name}] Linear regression: qualite_isolation_murs ~ {', '.join(x_cols)}")
-    print(f"  n_samples: {len(data)}")
-    print(f"  intercept: {model.intercept_:.4f}")
-    for col_name, coef in zip(x_cols, model.coef_):
-        print(f"  coef {col_name}: {coef:.4f}")
-    print(f"  R^2 (on training data): {r2:.4f}")
-
-
-# Run regressions:
-# - df_app: X = [qualite_isolation_enveloppe, consommation_kwh]
-# - df_maison: X = [qualite_isolation_enveloppe, annee_construction, consommation_kwh]
-run_linear_regression(
-    df_app,
-    "df_app",
-    ["qualite_isolation_enveloppe_norm", "consommation_kwh_norm"],
-)
-run_linear_regression(
-    df_maison,
-    "df_maison",
-    ["qualite_isolation_enveloppe_norm", "annee_construction_norm", "consommation_kwh_norm"],
-)
-
-"""
-# ---- MICE imputation for deperditions* variables ----
 deperditions_cols = [
-    "deperditions_baies_vitrees",
-    "deperditions_murs",
-    "deperditions_planchers_bas",
-    "deperditions_planchers_hauts",
-    "deperditions_ponts_thermiques",
-    "deperditions_portes",
-    "deperditions_enveloppe"
+    "deperditions_baies_vitrees_norm",
+    "deperditions_murs_norm",
+    "deperditions_planchers_bas_norm",
+    "deperditions_planchers_hauts_norm",
+    #"deperditions_portes_norm",
+    "deperditions_enveloppe_norm"
+]
+base_predictors = [
+    'etiquette_dpe_norm', 'etiquette_ges_norm', 'consommation_kwh_norm',
+    'deperditions_baies_vitrees_norm', 'deperditions_enveloppe_norm',
+    'deperditions_murs_norm', 'deperditions_planchers_bas_norm',
+    'deperditions_planchers_hauts_norm', 'deperditions_portes_norm',
+    'qualite_isolation_enveloppe_norm', 'qualite_isolation_murs_norm',
 ]
 
+# ─────────────────────── Load & clean ───────────────────────
 
-def run_mice_imputation(df, name: str):
-    print(f"\n[{name}] MICE imputation for deperditions columns")
-    missing_any = [c for c in deperditions_cols if c in df.columns and df[c].isna().any()]
-    if not missing_any:
-        print(f"[{name}] No missing values in target deperditions columns; skipping MICE.")
-        return
+df_dpe  = pd.read_csv(f"{data_dir}fait_dpe_traite.csv", sep=";")
 
-    # Work only with numeric columns for IterativeImputer
-    numeric_df = df.select_dtypes(include="number").copy()
+df_dpe = df_dpe[selected_columns]
+# Initial shape
+print(df_dpe.shape) #(1048575, 18)
+# After dropping type_immeuble=1
+df_dpe = df_dpe[df_dpe["type_immeuble"] == 0]
+print(df_dpe.shape) #(1025455, 18)
 
-    # Keep only columns that actually exist
-    target_cols = [c for c in deperditions_cols if c in numeric_df.columns]
+drop_shared = ["type_appartement", "type_maison", "type_immeuble", "numero_dpe"]
 
-    print(f"[{name}] Columns used in MICE (numeric): {list(numeric_df.columns)}")
-    print(f"[{name}] Target columns: {target_cols}")
+df_app    = (df_dpe[df_dpe["type_appartement"] == 1]
+             .copy()
+             .drop(columns=["isolation_toiture"] + drop_shared))
+df_maison = (df_dpe[df_dpe["type_maison"] == 1]
+             .copy()
+             .drop(columns=drop_shared))
 
-    imputer = IterativeImputer(random_state=0)
-    imputed_values = imputer.fit_transform(numeric_df)
-    numeric_imputed = pd.DataFrame(imputed_values, columns=numeric_df.columns, index=numeric_df.index)
+print("df_app shape:", df_app.shape) #(572512, 13)
+print("df_maison shape:", df_maison.shape) #(452943, 14)
+
+df_app    = df_app.apply(pd.to_numeric, errors="coerce")
+df_maison = df_maison.apply(pd.to_numeric, errors="coerce")
+
+print(fdpe.missing_value_table(df_app, "appartements", as_rate=False))
+print(fdpe.missing_value_table(df_maison, "maisons", as_rate=False))
+
+# ─────────────────────── Spearman heatmaps ───────────────────────
+
+# fdpe.plot_spearman_heatmap(df_app, "Appartements")
+# fdpe.plot_spearman_heatmap(df_maison, "Maisons")
+
+# ─────────────────────── Imputation ───────────────────────
+
+# Re-encode isolation_toiture: 0 → -1, NaN → 0
+iso = df_maison["isolation_toiture"]
+df_maison.loc[iso == 0, "isolation_toiture"] = -1
+df_maison.loc[iso.isna(), "isolation_toiture"] = 0
+
+# Wall insulation quality via linear regression
+
+print(fdpe.missing_value_table(df_app, "appartements", as_rate=False))
+print(fdpe.missing_value_table(df_maison, "maisons", as_rate=False))
+# ____MICE for deperditions columns____
+print("--Run MICE for deperditions_baies_vitrees_norm")
+fdpe.run_mice_imputation_xgboost(df_app, deperditions_cols, "df_app")
+"""   R²(deperditions_baies_vitrees_norm): 0.9027
+  R²(deperditions_murs_norm): 0.9322
+  R²(deperditions_planchers_bas_norm): 0.8712
+  R²(deperditions_planchers_hauts_norm): 0.8156
+  R²(deperditions_portes_norm): 0.6804
+  R²(deperditions_enveloppe_norm): 0.9816 """
+fdpe.run_mice_imputation_xgboost(df_maison,deperditions_cols, "df_maison")
+"""   R²(deperditions_baies_vitrees_norm): 0.6144
+  R²(deperditions_murs_norm): 0.8518
+  R²(deperditions_planchers_bas_norm): 0.5129
+  R²(deperditions_planchers_hauts_norm): 0.5461
+  R²(deperditions_portes_norm): 0.1759
+  R²(deperditions_enveloppe_norm): 0.9394 """
+print("Imputing consommation_kwh_norm")
+#___Energy consumption imputation____
+df_app = fdpe.run_linear_regression(df_app, "df_app", "consommation_kwh_norm",[p for p in base_predictors if p != "consommation_kwh_norm"] + ["surface_habitable_logement_norm"],impute=True)
+# R² train: 0.8532  |  R² test: 0.8537
+df_maison = fdpe.run_linear_regression(df_maison, "df_maison", "consommation_kwh_norm",[p for p in base_predictors if p != "consommation_kwh_norm"] + ["surface_habitable_logement_norm", "isolation_toiture"], impute=True)
+# R² train: 0.8628  |  R² test: 0.8591
+
+qual_mur_predictors = [
+    "qualite_isolation_enveloppe_norm", "etiquette_dpe_norm",
+    "etiquette_ges_norm", "deperditions_murs_norm", "consommation_kwh_norm",
+]
+print("Imputing surface_habitable_immeuble....")
+#df_app = fdpe.run_linear_regression(df_app, "df_app", "qualite_isolation_murs_norm", qual_mur_predictors, impute=True)
+# R² train: 0.3695  |  R² test: 0.3657 (243/572512)
+#df_maison = fdpe.run_linear_regression(df_maison, "df_maison", "qualite_isolation_murs_norm", qual_mur_predictors, impute=True)
+# R² train: 0.7061  |  R² test: 0.7057
+# Surface habitable imputation
+df_app = fdpe.run_xgboost_regression(df_app, "df_app", "surface_habitable_logement_norm", base_predictors, impute=True)
+# R² train: 0.7503  |  R² test: 0.7495
+# R² train: 0.9155  |  R² test: 0.9115
+df_maison = fdpe.run_xgboost_regression(df_maison, "df_maison", "surface_habitable_logement_norm", base_predictors + ["isolation_toiture"], impute=True)
+# R² train: 0.8635  |  R² test: 0.8620
+# R² train: 0.9069  |  R² test: 0.9009
+print("imputing code_commune.....")
+fdpe.run_rf_regression(df_app, "df_app", "code_commune", base_predictors)
 
 
-    # Replace in original df
-    df[target_cols] = numeric_imputed[target_cols]
+""" Construction year – low R², no imputation
+all_predictors_app    = base_predictors + ["surface_habitable_logement_norm"]
+all_predictors_maison = base_predictors + ["surface_habitable_logement_norm", "isolation_toiture"]
+fdpe.run_linear_regression(df_app,    "df_app",    "annee_construction_norm", all_predictors_app,    impute=False)
+fdpe.run_linear_regression(df_maison, "df_maison", "annee_construction_norm", all_predictors_maison, impute=False)
+ """
+# ── Final missing-value check & export ───────────────────────
+print(fdpe.missing_value_table(df_app, "appartement", as_rate=False))
+print(fdpe.missing_value_table(df_maison, "maison", as_rate=False))
 
-    # Simple R^2 diagnostics: for each target column, predict it from the other
-    # deperditions columns (on the fully imputed numeric data).
-    for col in target_cols:
-        others = [c for c in target_cols if c != col]
-        if not others:
-            continue
-        X = numeric_imputed[others].values
-        y = numeric_imputed[col].values
-        model = LinearRegression()
-        model.fit(X, y)
-        r2 = model.score(X, y)
-        print(f"[{name}] R^2 for {col}: {r2:.4f}")
+# df_app.to_csv(f"{data_dir}df_app.csv",    index=False)
+# df_maison.to_csv(f"{data_dir}df_maison.csv", index=False)
+# print("Saved df_app.csv and df_maison.csv.")
 
 
-run_mice_imputation(df_app, "df_app")
-run_mice_imputation(df_maison, "df_maison")
+# ── Run LAST, once all other features are fully imputed ──────
+# df_app    = impute_code_commune_knn(df_app,    "df_app",    n_neighbors=5)
+# df_maison = impute_code_commune_knn(df_maison, "df_maison", n_neighbors=5)
 
-print("\nAppartment: --------------------------------------\n")
-missing_counts = df_app.isna().sum()
-print(missing_counts)
-
-print("\nPercentage of missing values per column:")
-missing_percent = (missing_counts / len(df_app)) * 100
-print(missing_percent)
-
-print("\nMaison: --------------------------------------\n")
-missing_counts = df_maison.isna().sum()
-print(missing_counts)
-
-print("\nPercentage of missing values per column:")
-missing_percent = (missing_counts / len(df_maison)) * 100
-print(missing_percent)
+# ─────────────────────── Spearman heatmaps after ───────────────────────
 """
+fdpe.plot_spearman_heatmap(df_app, "Appartements après l'imputation")
+fdpe.plot_spearman_heatmap(df_maison, "Maisons après l'imputation")
+fdpe.plot_histogram(df_maison, 'isolation_toiture', 'Isolation toiture',7,5)
+print(fdpe.missing_value_table(df_maison, "maisons", as_rate=True))
+print(fdpe.missing_value_table(df_app, "appartements", as_rate=True))
+fdpe.plot_histogram(df_app, 'surface_habitable_logement_norm', 'Surface habitable (appartement) - XGBoost',7,5,15)
+fdpe.plot_histogram(df_app, 'deperditions_murs_norm', 'deperditions_murs_norm (appartement)',7,5,15)
+fdpe.plot_histogram(df_app, 'deperditions_portes_norm', 'deperditions_portes_norm (appartement)',7,5,15)
+"""
+fdpe.compare_ML(df_app, "qualite_isolation_murs_norm")
