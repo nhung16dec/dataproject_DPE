@@ -11,3 +11,4 @@ config.py
 
 # Others
 .vscode
+logs.log
